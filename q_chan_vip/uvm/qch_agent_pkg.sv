@@ -14,6 +14,7 @@ package qch_agent_pkg;
 
   `include "qch_config.svh"
   `include "qch_monitor.svh"
+  `include "qch_coverage.svh"
   `include "qch_sequencers.svh"
   `include "qch_controller_driver.svh"
   `include "qch_device_driver.svh"

@@ -26,11 +26,17 @@ class qch_config extends uvm_object;
   // 정책의 대상이 아니므로 타이밍만 여기서 준다.
   int unsigned exit_delay_cycles   = 0;
 
+  // functional coverage 수집 여부. role 과 무관하게 동작한다 (monitor 아이템만
+  // 보므로 PASSIVE 에서도 모인다). 기본 1 이고, 같은 인터페이스에 agent 를 여러 개
+  // 붙여 중복 집계가 되는 구성에서만 끈다.
+  bit          has_coverage        = 1'b1;
+
   `uvm_object_utils_begin(qch_config)
     `uvm_field_enum(qch_role_e, role,    UVM_ALL_ON)
     `uvm_field_int (start_responder_seq, UVM_ALL_ON | UVM_BIN)
     `uvm_field_int (reset_qreqn_high,    UVM_ALL_ON | UVM_BIN)
     `uvm_field_int (exit_delay_cycles,   UVM_ALL_ON | UVM_DEC)
+    `uvm_field_int (has_coverage,        UVM_ALL_ON | UVM_BIN)
   `uvm_object_utils_end
 
   function new(string name = "qch_config");

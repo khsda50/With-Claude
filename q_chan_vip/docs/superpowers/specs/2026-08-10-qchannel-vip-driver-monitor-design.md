@@ -312,7 +312,8 @@ agent가 관찰한다. 검증 항목:
 ## 다음 증분으로 미루는 것
 
 - SVA 프로토콜 체커 + bind (handshake rules 6개, illegal 조합, 리셋 상태)
-- 커버리지 모델 (상태/전이 커버, `cycles_in_prev` 분포)
+- ~~커버리지 모델 (상태/전이 커버, `cycles_in_prev` 분포)~~
+  → 완료: `2026-08-10-qchannel-vip-coverage-model.md`
 - 스코어보드 — 사용 여부 자체가 미정. Q-Channel 신호만으로는 판정 불가능한 항목
   (클럭이 실제로 멈췄는가, 트랜잭션 유실, 데드락)이 대상이 되므로 외부 신호 접근이
   전제된다.

@@ -87,6 +87,73 @@ package qch_item_pkg;
   endfunction
 
   // -------------------------------------------------------------------------
+  // 커버리지 어휘 (transition / device 응답)
+  //
+  // monitor 아이템은 (prev_state, state) 쌍으로 전이를 표현한다. 커버리지에서
+  // 이것을 그대로 cross 하면 7x7=49 칸이 생기고 그중 7 개만 합법이라 지표가
+  // 희석된다. 그래서 쌍을 "이름 있는 전이" 로 접어서 쓴다.
+  //
+  // 전이 판정을 covergroup 의 transition bin( A => B )으로 하지 않는 이유:
+  // transition bin 은 연속된 두 번의 sample 사이의 이력에 의존한다. monitor 는
+  // 리셋 중에 발행을 멈추므로, 리셋을 걸친 두 아이템이 인접 sample 로 들어오면
+  // 실제로 일어나지 않은 전이가 하나 잡힌다. 아이템이 prev_state 를 이미 들고
+  // 있으니 이력에 의존하지 않고 아이템 하나로 판정하는 편이 정확하다.
+  // -------------------------------------------------------------------------
+
+  // IHI0068D handshake 가 허용하는 전이 7 개 + 그 밖의 전부.
+  typedef enum bit [3:0] {
+    QCH_TRANS_RUN_REQ,    // Q_RUN      -> Q_REQUEST  : controller 가 요청
+    QCH_TRANS_REQ_STOP,   // Q_REQUEST  -> Q_STOPPED  : device 가 수락
+    QCH_TRANS_REQ_DENY,   // Q_REQUEST  -> Q_DENIED   : device 가 거부
+    QCH_TRANS_STOP_EXIT,  // Q_STOPPED  -> Q_EXIT     : controller 가 요청 해제
+    QCH_TRANS_EXIT_RUN,   // Q_EXIT     -> Q_RUN      : device 가 QACCEPTn 복귀
+    QCH_TRANS_DENY_CONT,  // Q_DENIED   -> Q_CONTINUE : controller 가 요청 해제
+    QCH_TRANS_CONT_RUN,   // Q_CONTINUE -> Q_RUN      : device 가 QDENY 해제
+    QCH_TRANS_OTHER       // 위 7 개가 아닌 전이 (합법이 아니거나 리셋 경계)
+  } qch_trans_e;
+
+  // Q_REQUEST 를 떠나는 전이에서 읽어낸 device 의 답.
+  //
+  // qch_ctrl_response_e 와 별개로 두는 이유: 그쪽은 controller driver 가 자기가
+  // 구동한 결과를 기록하는 자극 측 필드이고, 이쪽은 관측만으로 판정한 결과다.
+  // PASSIVE 구성에서는 자극 아이템이 없으므로 커버리지는 이쪽만 쓸 수 있다.
+  typedef enum bit [1:0] {
+    QCH_OBS_ACCEPTED,  // Q_REQUEST -> Q_STOPPED
+    QCH_OBS_DENIED,    // Q_REQUEST -> Q_DENIED
+    QCH_OBS_OTHER      // 응답 없이 Q_REQUEST 를 떠남 (규칙 위반 → SVA 대상)
+  } qch_obs_response_e;
+
+  // 전이 쌍을 이름 있는 전이로 접는다.
+  function automatic qch_trans_e qch_classify_trans(qch_state_e prev_state,
+                                                    qch_state_e state);
+    case (prev_state)
+      QCH_ST_RUN      : if (state == QCH_ST_REQUEST)  return QCH_TRANS_RUN_REQ;
+      QCH_ST_REQUEST  : begin
+                          if (state == QCH_ST_STOPPED) return QCH_TRANS_REQ_STOP;
+                          if (state == QCH_ST_DENIED)  return QCH_TRANS_REQ_DENY;
+                        end
+      QCH_ST_STOPPED  : if (state == QCH_ST_EXIT)     return QCH_TRANS_STOP_EXIT;
+      QCH_ST_EXIT     : if (state == QCH_ST_RUN)      return QCH_TRANS_EXIT_RUN;
+      QCH_ST_DENIED   : if (state == QCH_ST_CONTINUE) return QCH_TRANS_DENY_CONT;
+      QCH_ST_CONTINUE : if (state == QCH_ST_RUN)      return QCH_TRANS_CONT_RUN;
+      default         : ;
+    endcase
+    return QCH_TRANS_OTHER;
+  endfunction
+
+  // Q_REQUEST 를 떠나는 전이만 의미가 있다. 그 밖에서는 QCH_OBS_OTHER 를 돌려주고,
+  // 커버리지 쪽에서 prev_state 로 걸러 샘플하지 않는다.
+  function automatic qch_obs_response_e qch_classify_response(qch_state_e prev_state,
+                                                              qch_state_e state);
+    if (prev_state != QCH_ST_REQUEST) return QCH_OBS_OTHER;
+    case (state)
+      QCH_ST_STOPPED : return QCH_OBS_ACCEPTED;
+      QCH_ST_DENIED  : return QCH_OBS_DENIED;
+      default        : return QCH_OBS_OTHER;
+    endcase
+  endfunction
+
+  // -------------------------------------------------------------------------
   // qch_base_item : 모든 Q-Channel 아이템의 공통 필드
   // -------------------------------------------------------------------------
   class qch_base_item extends uvm_sequence_item;

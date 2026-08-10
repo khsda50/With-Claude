@@ -9,6 +9,8 @@
 //   QCH_ROLE_PASSIVE     O        X                         X
 //
 // monitor 는 세 경우 모두 만든다. 관찰은 항상 필요하다.
+// coverage 도 role 과 무관하게 만든다 (cfg.has_coverage 로만 끈다). monitor
+// 아이템만 구독하므로 PASSIVE 구성에서도 그대로 모인다.
 // ---------------------------------------------------------------------------
 class qch_agent extends uvm_agent;
 
@@ -17,6 +19,7 @@ class qch_agent extends uvm_agent;
   qch_config                    cfg;
 
   qch_monitor                   mon;
+  qch_coverage                  cov;
 
   qch_controller_sequencer      ctrl_seqr;
   qch_controller_driver         ctrl_drv;
@@ -41,6 +44,9 @@ class qch_agent extends uvm_agent;
 
     mon = qch_monitor::type_id::create("mon", this);
 
+    if (cfg.has_coverage)
+      cov = qch_coverage::type_id::create("cov", this);
+
     case (cfg.role)
       QCH_ROLE_CONTROLLER: begin
         ctrl_seqr = qch_controller_sequencer::type_id::create("ctrl_seqr", this);
@@ -59,6 +65,10 @@ class qch_agent extends uvm_agent;
 
   virtual function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
+
+    if (cfg.has_coverage)
+      mon.ap.connect(cov.analysis_export);
+
     if (cfg.role == QCH_ROLE_CONTROLLER)
       ctrl_drv.seq_item_port.connect(ctrl_seqr.seq_item_export);
 
