@@ -23,4 +23,10 @@ package qch_agent_pkg;
   `include "qch_agent.svh"
   `include "qch_env.svh"
 
+  // 다중 채널. 채널마다 qch_env 를 하나 두고, 채널을 넘나드는 시퀀스는
+  // virtual sequencer 위에서 돈다.
+  `include "qch_virtual_sequencer.svh"
+  `include "qch_multi_env.svh"
+  `include "qch_vseq_lib.svh"
+
 endpackage

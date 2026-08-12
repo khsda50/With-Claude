@@ -15,38 +15,7 @@ import uvm_pkg::*;
 import qch_item_pkg::*;
 import qch_agent_pkg::*;
 
-// controller 자극: quiescence 요청과 운영 허용을 번갈아 반복한다
-class qch_loopback_seq extends uvm_sequence #(qch_controller_item);
-  `uvm_object_utils(qch_loopback_seq)
-
-  int unsigned n_rounds = 20;
-
-  function new(string name = "qch_loopback_seq");
-    super.new(name);
-  endfunction
-
-  virtual task body();
-    qch_controller_item req;
-
-    repeat (n_rounds) begin
-      req = qch_controller_item::type_id::create("req_q");
-      start_item(req);
-      if (!req.randomize() with { action == QCH_REQUEST_QUIESCENCE;
-                                  pre_delay_cycles inside {[0:5]};
-                                  response_timeout_cycles == 200; })
-        `uvm_error(get_type_name(), "randomize() failed on quiescence request")
-      finish_item(req);
-
-      req = qch_controller_item::type_id::create("req_r");
-      start_item(req);
-      if (!req.randomize() with { action == QCH_ALLOW_RUN;
-                                  pre_delay_cycles inside {[0:5]};
-                                  response_timeout_cycles == 200; })
-        `uvm_error(get_type_name(), "randomize() failed on allow-run request")
-      finish_item(req);
-    end
-  endtask
-endclass
+// qch_loopback_seq 는 qch_seq_lib.svh(패키지)로 옮겼다.
 
 class qch_loopback_test extends uvm_test;
   `uvm_component_utils(qch_loopback_test)
@@ -180,27 +149,7 @@ endclass
 // 정확한 사이클 수는 샘플링 오프셋 때문에 예측이 어려우므로 범위로 확인한다.
 // 지연이 무시되면 체류가 1~2 사이클에 그치므로 아래 범위에서 걸린다.
 // ---------------------------------------------------------------------------
-class qch_fixed_delay_seq extends uvm_sequence #(qch_device_response_item);
-  `uvm_object_utils(qch_fixed_delay_seq)
-
-  int unsigned fixed_delay = 8;
-
-  function new(string name = "qch_fixed_delay_seq");
-    super.new(name);
-  endfunction
-
-  virtual task body();
-    qch_device_response_item req;
-    forever begin
-      req = qch_device_response_item::type_id::create("fixed_req");
-      start_item(req);
-      if (!req.randomize() with { policy                == QCH_ACCEPT;
-                                  response_delay_cycles == fixed_delay; })
-        `uvm_error(get_type_name(), "randomize() failed on fixed delay item")
-      finish_item(req);
-    end
-  endtask
-endclass
+// qch_fixed_delay_seq 는 qch_seq_lib.svh(패키지)로 옮겼다.
 
 class qch_delay_test extends uvm_test;
   `uvm_component_utils(qch_delay_test)

@@ -107,6 +107,88 @@ class qch_env_example_test extends uvm_test;
 endclass
 
 // ---------------------------------------------------------------------------
+// 채널이 여러 개일 때
+//
+// 위 테스트처럼 env 를 손으로 하나씩 늘리면 채널이 늘 때마다 cfg 생성 / vif 조회 /
+// env 생성 / 시퀀스 start 가 같이 늘어난다. qch_multi_env 를 쓰면 등록만 하면 된다.
+//
+// 채널마다 qch_env 를 하나 두는 구조는 그대로다. cfg 와 vif 를 env subtree 로만
+// 내려보내는 격리가 채널이 섞이지 않는 근거이기 때문이다. 컨테이너가 하는 일은
+// 반복 코드를 없애는 것과, 채널을 넘나드는 시퀀스가 올라갈 자리를 주는 것이다.
+// ---------------------------------------------------------------------------
+class qch_multi_example_test extends uvm_test;
+  `uvm_component_utils(qch_multi_example_test)
+
+  qch_multi_config mcfg;
+  qch_multi_env    menv;
+
+  function new(string name = "qch_multi_example_test", uvm_component parent = null);
+    super.new(name, parent);
+  endfunction
+
+  virtual function void build_phase(uvm_phase phase);
+    virtual qch_if vif_cpu, vif_l2, vif_noc;
+
+    super.build_phase(phase);
+
+    if (!uvm_config_db#(virtual qch_if)::get(this, "", "vif_cpu", vif_cpu))
+      `uvm_fatal(get_type_name(), "\"vif_cpu\" 가 config_db 에 없다")
+    if (!uvm_config_db#(virtual qch_if)::get(this, "", "vif_l2", vif_l2))
+      `uvm_fatal(get_type_name(), "\"vif_l2\" 가 config_db 에 없다")
+    if (!uvm_config_db#(virtual qch_if)::get(this, "", "vif_noc", vif_noc))
+      `uvm_fatal(get_type_name(), "\"vif_noc\" 가 config_db 에 없다")
+
+    mcfg = qch_multi_config::type_id::create("mcfg");
+
+    // 등록 순서가 보존된다. 전력 시퀀스는 순서가 곧 의미다.
+    void'(mcfg.add("cpu", QCH_ROLE_CONTROLLER, vif_cpu));
+    void'(mcfg.add("l2",  QCH_ROLE_CONTROLLER, vif_l2 ));
+    void'(mcfg.add("noc", QCH_ROLE_CONTROLLER, vif_noc));
+
+    // 반환값으로 채널별 세부 설정을 이어서 만질 수 있다:
+    //   c = mcfg.add("crmu", QCH_ROLE_DEVICE, vif_crmu);
+    //   c.start_responder_seq = 0;   // 응답을 직접 몰겠다
+
+    menv     = qch_multi_env::type_id::create("menv", this);
+    menv.cfg = mcfg;
+  endfunction
+
+  virtual task run_phase(uvm_phase phase);
+    qch_quiesce_order_seq down_seq;
+    qch_quiesce_order_seq up_seq;
+
+    phase.raise_objection(this);
+
+    wait (mcfg.ch["cpu"].vif.rst_n === 1'b1);
+    repeat (10) @(posedge mcfg.ch["cpu"].vif.clk);
+
+    // 순서대로 조용히 시킨다 (전력 내리는 순서)
+    down_seq       = qch_quiesce_order_seq::type_id::create("down_seq");
+    down_seq.order = '{"cpu", "l2", "noc"};
+    down_seq.start(menv.vseqr);
+
+    // 역순으로 한 번 더 (깨우는 순서 흉내)
+    up_seq       = qch_quiesce_order_seq::type_id::create("up_seq");
+    up_seq.order = '{"noc", "l2", "cpu"};
+    up_seq.start(menv.vseqr);
+
+    // 채널 하나만 몰고 싶으면 sequencer 를 이름으로 꺼낸다
+    // seq.start(menv.get_ctrl("cpu"));
+
+    // 동시에 흔들어 간섭을 보려면
+    // all_seq          = qch_quiesce_all_seq::type_id::create("all_seq");
+    // all_seq.parallel = 1'b1;
+    // if (!all_seq.randomize() with { rounds_per_channel == 5; }) ...
+    // all_seq.start(menv.vseqr);
+
+    repeat (20) @(posedge mcfg.ch["cpu"].vif.clk);
+
+    phase.drop_objection(this);
+  endtask
+
+endclass
+
+// ---------------------------------------------------------------------------
 // bind 문 — 실제 신호 이름으로 바꿔 쓰는 부분
 //
 // bind 는 compilation unit scope 에 둔다. 사내 TB 에서는 이 블록만 떼어

@@ -9,40 +9,7 @@ import uvm_pkg::*;
 import qch_item_pkg::*;
 import qch_agent_pkg::*;
 
-// controller 자극 시퀀스: 요청 -> (device 응답) -> 운영 허용
-class qch_ctrl_smoke_seq extends uvm_sequence #(qch_controller_item);
-  `uvm_object_utils(qch_ctrl_smoke_seq)
-
-  qch_controller_item sent[$];
-
-  function new(string name = "qch_ctrl_smoke_seq");
-    super.new(name);
-  endfunction
-
-  virtual task body();
-    qch_controller_item req;
-
-    // 1) quiescence 요청
-    req = qch_controller_item::type_id::create("req0");
-    start_item(req);
-    if (!req.randomize() with { action == QCH_REQUEST_QUIESCENCE;
-                                pre_delay_cycles == 2;
-                                response_timeout_cycles == 100; })
-      `uvm_error(get_type_name(), "randomize() failed on req0")
-    finish_item(req);
-    sent.push_back(req);
-
-    // 2) 운영 허용
-    req = qch_controller_item::type_id::create("req1");
-    start_item(req);
-    if (!req.randomize() with { action == QCH_ALLOW_RUN;
-                                pre_delay_cycles == 0;
-                                response_timeout_cycles == 100; })
-      `uvm_error(get_type_name(), "randomize() failed on req1")
-    finish_item(req);
-    sent.push_back(req);
-  endtask
-endclass
+// qch_ctrl_smoke_seq 는 qch_seq_lib.svh(패키지)로 옮겼다. 여기서 다시 정의하지 않는다.
 
 class qch_controller_test extends uvm_test;
   `uvm_component_utils(qch_controller_test)

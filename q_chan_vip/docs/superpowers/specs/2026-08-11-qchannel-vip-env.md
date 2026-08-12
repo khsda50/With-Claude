@@ -92,31 +92,110 @@ scoreboard 가 agent 내부를 모르고도 붙을 수 있게 했다.
 대신 어댑터는 `u_qch_if` 를 노출만 하고, TB top 이 `run_test()` **직전에** 계층
 참조로 넘긴다. 같은 `initial` 블록 안이라 순서가 결정적이다.
 
-### 7. 재사용 가능한 controller 시퀀스를 패키지로 옮긴다
+### 7. 시퀀스를 테스트에서 떼어 패키지로 옮긴다
 
-controller 시퀀스가 지금까지 테스트 파일 안에만 있어(`qch_ctrl_smoke_seq`,
-`qch_loopback_seq`) 다른 환경에서 쓸 수 없었다. `qch_quiesce_seq` 를 패키지에 둔다.
+시퀀스가 테스트 파일 안에만 있어 다른 환경에서 쓸 수 없었다. 전부 `qch_seq_lib.svh`
+로 옮기고, 세 시퀀스가 똑같이 반복하던 create → start_item → randomize →
+finish_item → 결과 집계를 `qch_ctrl_base_seq` 로 뺐다.
+
+| 시퀀스 | 대상 sequencer | 출처 |
+|---|---|---|
+| `qch_ctrl_base_seq` | ctrl_seqr | 신규 (공통 동작) |
+| `qch_quiesce_seq` | ctrl_seqr | 신규 (일반 회귀) |
+| `qch_ctrl_smoke_seq` | ctrl_seqr | `qch_controller_test.sv` 에서 이동 |
+| `qch_loopback_seq` | ctrl_seqr | `qch_loopback_test.sv` 에서 이동 |
+| `qch_fixed_delay_seq` | rsp_seqr | `qch_loopback_test.sv` 에서 이동 |
+| `qch_deny_seq` | rsp_seqr | 신규 (deny 경로 강제) |
+| `qch_active_toggle_seq` | act_seqr | 신규 |
+| `qch_responder_seq` | rsp_seqr | 기존 (agent 가 자동 기동, 별도 파일 유지) |
+
+이동한 세 개는 기존 테스트가 필드를 직접 읽으므로 **API 를 그대로 유지했다**
+(`qch_ctrl_smoke_seq.sent`, `qch_loopback_seq.n_rounds`,
+`qch_fixed_delay_seq.fixed_delay`). 테스트 쪽은 정의만 지웠다.
+
+`qch_active_toggle_seq` 를 새로 만든 이유: `act_seqr` 를 쓰는 시퀀스가 하나도
+없었다. QACTIVE 를 흔들지 않으면 커버리지의 `cp_qactive` 와 `x_response_qactive` 가
+절반만 찬다. `qch_deny_seq` 도 같은 성격으로, `x_response_latency` 의
+`denied × medium` 같은 hole 을 겨냥한다.
 
 요청 뒤에 항상 `QCH_ALLOW_RUN` 을 붙인다. IHI0068D 는 QDENY 가 QREQn 이 HIGH 로
 되돌아온 뒤에만 LOW 로 내려갈 수 있다고 정하므로, **거부되었을 때 요청을 되돌리는
 것은 선택이 아니라 의무** 다. 수락된 경우도 Q_STOPPED → Q_EXIT → Q_RUN 정상 경로라
 두 경우가 같은 모양이 된다.
 
-Device 측은 필요 없다. agent 가 `cfg.start_responder_seq` 로 `qch_responder_seq` 를
-자동으로 올린다.
+`randomize() with {}` 안에서 `local::` 을 쓰지 않는다. 인자·멤버 이름을 아이템
+필드와 겹치지 않게 지어(`act_arg`, `delay_arg`, `timeout_cycles`) 평범한 이름 해석으로
+충분하게 만들었다. `local::` 지원이 툴마다 미묘한 것을 피하려는 것이다.
+
+### 8. 채널이 여러 개일 때 — env 를 여러 개 두고 컨테이너로 묶는다
+
+**채널마다 `qch_env` 하나** 라는 구조는 유지한다. cfg/vif 를 env subtree 로만
+내려보내는 격리가 채널이 섞이지 않는 근거이고, 그것을 포기하면 안 된다.
+
+문제는 테스트 쪽 반복이다. 채널이 늘 때마다 cfg 생성·vif 조회·env 생성·시퀀스
+start 가 같이 늘어난다. 그래서 두 겹을 더 얹었다.
+
+**`qch_multi_config` / `qch_multi_env`** — 채널을 이름으로 등록하면 env 를 대신
+만든다. 등록 순서를 `names[$]` 로 보존하는데, 연관 배열의 `foreach` 순회는 키의
+사전순이라 **전력 시퀀스 순서로 쓸 수 없기** 때문이다.
+
+```systemverilog
+void'(mcfg.add("cpu", QCH_ROLE_CONTROLLER, vif_cpu));
+void'(mcfg.add("l2",  QCH_ROLE_CONTROLLER, vif_l2 ));
+menv.cfg = mcfg;
+```
+
+**`qch_virtual_sequencer`** — 채널별 sequencer 핸들만 들고 있는 통로.
+전력 관리에서 "무엇을 먼저 조용히 시키는가" 는 채널 하나만 보는 시퀀스로 표현할 수
+없다. 채널을 넘나드는 시퀀스가 필요하고, 그것이 올라갈 자리가 이것이다.
+
+인덱스가 아니라 **이름으로 찾는다.** 인덱스로 찾으면 채널이 하나 늘거나 순서가
+바뀔 때 시퀀스가 조용히 다른 채널을 건드린다. `get_ctrl()` 은 없는 이름에
+`uvm_fatal` 을 낸다 — null sequencer 에 `start` 하면 원인과 먼 곳에서 죽는다.
+
+**`qch_vseq_lib.svh`** — `qch_quiesce_all_seq`(전 채널, 순차/동시 선택),
+`qch_quiesce_order_seq`(지정 순서). 후자가 전력 시퀀스의 실제 모양이다.
+`order` 가 비면 `uvm_fatal` 로 잡는다. 조용히 통과하면 시나리오가 돌았다고
+착각하게 된다.
+
+동시 모드의 `fork` 는 반복마다 새 `automatic` 변수를 이름 있는 블록
+(`begin : spawn_per_channel`)에 둔다. 이름 없는 블록의 선언을 거부하는 툴을 피하려는
+것이다.
 
 ## 상위가 하는 일
 
+**채널 하나**
+
 ```systemverilog
 // build_phase
-cfg          = qch_config::type_id::create("cfg");
-cfg.role     = QCH_ROLE_CONTROLLER;
-cfg.vif      = <bind 어댑터의 u_qch_if>;
-env          = qch_env::type_id::create("env", this);
-env.cfg      = cfg;
+cfg      = qch_config::type_id::create("cfg");
+cfg.role = QCH_ROLE_CONTROLLER;
+cfg.vif  = <bind 어댑터의 u_qch_if>;
+env      = qch_env::type_id::create("env", this);
+env.cfg  = cfg;
 
 // run_phase
 seq.start(env.ctrl_seqr);
+```
+
+**채널 여러 개**
+
+```systemverilog
+// build_phase
+mcfg = qch_multi_config::type_id::create("mcfg");
+void'(mcfg.add("cpu", QCH_ROLE_CONTROLLER, vif_cpu));
+void'(mcfg.add("l2",  QCH_ROLE_CONTROLLER, vif_l2 ));
+void'(mcfg.add("noc", QCH_ROLE_CONTROLLER, vif_noc));
+menv     = qch_multi_env::type_id::create("menv", this);
+menv.cfg = mcfg;
+
+// run_phase — 순서를 쓰는 시나리오
+vseq       = qch_quiesce_order_seq::type_id::create("vseq");
+vseq.order = '{"cpu", "l2", "noc"};
+vseq.start(menv.vseqr);
+
+// 한 채널만
+seq.start(menv.get_ctrl("cpu"));
 ```
 
 ## 미확인 사항

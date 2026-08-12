@@ -10,7 +10,9 @@
 // 컴파일 순서 (바꾸면 깨진다)
 //   1. qch_if.sv        인터페이스 — 패키지가 virtual qch_if 를 참조한다
 //   2. qch_items.sv     qch_item_pkg — 아이템과 커버리지 어휘
-//   3. qch_agent_pkg.sv qch_agent_pkg — config/monitor/coverage/driver/seq/agent/env
+//   3. qch_agent_pkg.sv qch_agent_pkg — config/monitor/coverage/driver/시퀀스/
+//                        agent/env, 그리고 다중 채널용 virtual sequencer·multi_env·
+//                        virtual 시퀀스
 //   4. qch_bind.sv      bind 용 신호 어댑터 (모듈이라 패키지 밖)
 // ---------------------------------------------------------------------------
 
