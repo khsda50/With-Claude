@@ -19,6 +19,8 @@ package qch_agent_pkg;
   `include "qch_controller_driver.svh"
   `include "qch_device_driver.svh"
   `include "qch_responder_seq.svh"
+  `include "qch_seq_lib.svh"
   `include "qch_agent.svh"
+  `include "qch_env.svh"
 
 endpackage

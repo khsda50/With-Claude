@@ -10,6 +10,16 @@ typedef enum bit [1:0] {
 
 class qch_config extends uvm_object;
 
+  // 이 채널의 인터페이스 핸들.
+  //
+  // config_db 에 "vif" 를 따로 넣지 않고 cfg 하나만 넘기면 되도록 여기에 둔다.
+  // env 가 자기 subtree 로 내려보내므로, 같은 DUT 에 채널이 여러 개 있어도
+  // env 인스턴스마다 다른 인터페이스를 잡을 수 있다 (전역 "*" 설정은 그게 안 된다).
+  //
+  // uvm_field 매크로를 붙이지 않는다. virtual interface 는 field automation 의
+  // copy/compare/print 대상이 될 수 없다.
+  virtual qch_if vif;
+
   // 기본값을 PASSIVE 로 두는 이유: 설정을 깜빡했을 때 아무 신호도 구동하지
   // 않는 쪽이 안전하다. 실수로 DUT 신호와 충돌하는 것보다 낫다.
   qch_role_e   role                = QCH_ROLE_PASSIVE;
